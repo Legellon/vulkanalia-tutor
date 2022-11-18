@@ -5,15 +5,34 @@
     clippy::unnecessary_wraps
 )]
 
+use std::collections::HashSet;
+use std::ffi::CStr;
+use std::os::raw::c_void;
+
+use log::*;
+
 use anyhow::{anyhow, Result};
+
 use vulkanalia::loader::{LibloadingLoader, LIBRARY};
-use vulkanalia::window as vk_window;
 use vulkanalia::prelude::v1_2::*;
-use vulkanalia::vk::{InstanceCreateFlags, KHR_PORTABILITY_ENUMERATION_EXTENSION};
+use vulkanalia::vk::{
+    InstanceCreateFlags,
+    ExtDebugUtilsExtension,
+    KHR_PORTABILITY_ENUMERATION_EXTENSION,
+};
+use vulkanalia::window as vk_window;
+
 use winit::dpi::LogicalSize;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
+
+
+const VALIDATION_ENABLED: bool = cfg!(debug_assertions);
+
+const VALIDATION_LAYER: vk::ExtensionName =
+    vk::ExtensionName::from_bytes(b"VK_LAYER_KHRONOS_validation");
+
 
 fn main() -> Result<()> {
     pretty_env_logger::init();
@@ -31,19 +50,24 @@ fn main() -> Result<()> {
         *control_flow = ControlFlow::Poll;
 
         match event {
-            Event::MainEventsCleared if !destroying =>
-                unsafe { app.render(&window) }.unwrap(),
+            Event::MainEventsCleared if !destroying => unsafe { app.render(&window) }.unwrap(),
 
-            Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => {
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } => {
                 destroying = true;
                 *control_flow = ControlFlow::Exit;
-                unsafe { app.destroy(); }
-            },
+                unsafe {
+                    app.destroy();
+                }
+            }
 
             _ => {}
         }
     });
 }
+
 
 #[derive(Clone, Debug)]
 struct App {
@@ -69,8 +93,10 @@ impl App {
     }
 }
 
+
 #[derive(Clone, Debug, Default)]
 struct AppData {}
+
 
 unsafe fn create_instance(window: &Window, entry: &Entry) -> Result<Instance> {
     let application_info = vk::ApplicationInfo::builder()
@@ -80,6 +106,8 @@ unsafe fn create_instance(window: &Window, entry: &Entry) -> Result<Instance> {
         .engine_version(vk::make_version(1, 0, 0))
         .api_version(vk::make_version(1, 0, 0));
 
+    //= Extensions ===-----
+
     let mut extensions: Vec<_> = vk_window::get_required_instance_extensions(window)
         .iter()
         .map(|e| e.as_ptr())
@@ -87,10 +115,31 @@ unsafe fn create_instance(window: &Window, entry: &Entry) -> Result<Instance> {
 
     extensions.push(KHR_PORTABILITY_ENUMERATION_EXTENSION.name.as_ptr());
 
+    //= Validation Layers ===----
+
+    let available_layers: HashSet<_> = entry
+        .enumerate_instance_layer_properties()?
+        .iter()
+        .map(|l| l.layer_name)
+        .collect();
+
+    if VALIDATION_ENABLED && !available_layers.contains(&VALIDATION_LAYER) {
+        return Err(anyhow!("Validation layer requested but not supported."))
+    }
+
+    let layers = if VALIDATION_ENABLED {
+        vec![VALIDATION_LAYER.as_ptr()]
+    } else {
+        vec![]
+    };
+
+    //= Instance Creation ===----
+
     let info = vk::InstanceCreateInfo::builder()
         .application_info(&application_info)
         .flags(InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR)
-        .enabled_extension_names(&extensions);
+        .enabled_extension_names(&extensions)
+        .enabled_layer_names(&layers);
 
     Ok(entry.create_instance(&info, None)?)
 }
