@@ -13,6 +13,8 @@ use log::*;
 
 use anyhow::{anyhow, Result};
 
+use thiserror::Error;
+
 use vulkanalia::loader::{LibloadingLoader, LIBRARY};
 use vulkanalia::prelude::v1_2::*;
 use vulkanalia::vk::{
@@ -64,6 +66,12 @@ fn main() -> Result<()> {
     });
 }
 
+#[derive(Clone, Debug, Default)]
+struct AppData {
+    messenger: vk::DebugUtilsMessengerEXT,
+    physical_device: vk::PhysicalDevice,
+}
+
 #[derive(Clone, Debug)]
 struct App {
     entry: Entry,
@@ -78,6 +86,8 @@ impl App {
         let mut data = AppData::default();
 
         let instance = create_instance(window, &entry, &mut data)?;
+
+        pick_physical_device(&instance, &mut data)?;
 
         Ok(Self {
             entry,
@@ -100,20 +110,78 @@ impl App {
     }
 }
 
-#[derive(Clone, Debug, Default)]
-struct AppData {
-    messenger: vk::DebugUtilsMessengerEXT,
+#[derive(Copy, Clone, Debug)]
+struct QueueFamilyIndices {
+    graphics: u32,
+}
+
+impl QueueFamilyIndices {
+    unsafe fn get(
+        instance: &Instance,
+        data: &AppData,
+        physical_device: vk::PhysicalDevice,
+    ) -> Result<Self> {
+        let properties = instance.get_physical_device_queue_family_properties(physical_device);
+
+        let graphics = properties
+            .iter()
+            .position(|p| p.queue_flags.contains(vk::QueueFlags::GRAPHICS))
+            .map(|i| i as u32);
+
+        if let Some(graphics) = graphics {
+            Ok(Self { graphics })
+        } else {
+            Err(anyhow!(SuitabilityError(
+                "Missing required queue families."
+            )))
+        }
+    }
+}
+
+#[derive(Debug, Error)]
+#[error("Missing {0}.")]
+struct SuitabilityError(&'static str);
+
+unsafe fn pick_physical_device(instance: &Instance, data: &mut AppData) -> Result<()> {
+    // Try to find a suitable device and pick it.
+    // Able to pick only one physical device.
+
+    for physical_device in instance.enumerate_physical_devices()? {
+        let properties = instance.get_physical_device_properties(physical_device);
+
+        if let Err(error) = check_physical_device(instance, data, physical_device) {
+            warn!(
+                "Skipping physical device ('{}'): {}",
+                properties.device_name, error
+            );
+        } else {
+            info!("Selected physical device ('{}').", properties.device_name);
+            data.physical_device = physical_device;
+            return Ok(());
+        }
+    }
+
+    Err(anyhow!("Failed to find suitable physical device."))
+}
+
+unsafe fn check_physical_device(
+    instance: &Instance,
+    data: &AppData,
+    physical_device: vk::PhysicalDevice,
+) -> Result<()> {
+    QueueFamilyIndices::get(&instance, &data, physical_device)?;
+    Ok(())
 }
 
 unsafe fn create_instance(window: &Window, entry: &Entry, data: &mut AppData) -> Result<Instance> {
     let application_info = vk::ApplicationInfo::builder()
         .application_name(b"Vulkan Tutorial\0")
-        .application_version(vk::make_version(1, 0, 0))
+        .application_version(vk::make_version(0, 1, 0))
         .engine_name(b"No Engine\0")
-        .engine_version(vk::make_version(1, 0, 0))
-        .api_version(vk::make_version(1, 0, 0));
+        .engine_version(vk::make_version(0, 1, 0))
+        .api_version(vk::make_version(0, 1, 0));
 
-    //= Extensions ===-----
+    //--== Extensions ===-----
 
     let mut extensions: Vec<_> = vk_window::get_required_instance_extensions(window)
         .iter()
@@ -126,7 +194,7 @@ unsafe fn create_instance(window: &Window, entry: &Entry, data: &mut AppData) ->
         extensions.push(vk::EXT_DEBUG_UTILS_EXTENSION.name.as_ptr());
     }
 
-    //= Validation Layers ===----
+    //--== Validation Layers ===----
 
     let available_layers: HashSet<_> = entry
         .enumerate_instance_layer_properties()?
@@ -144,13 +212,13 @@ unsafe fn create_instance(window: &Window, entry: &Entry, data: &mut AppData) ->
         vec![]
     };
 
-    //= Instance Info ===----
+    //--== Instance Info ===----
 
     let mut info = vk::InstanceCreateInfo::builder()
         .application_info(&application_info)
-        .flags(InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR)
         .enabled_extension_names(&extensions)
-        .enabled_layer_names(&layers);
+        .enabled_layer_names(&layers)
+        .flags(InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR);
 
     let mut debug_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
         .message_severity(vk::DebugUtilsMessageSeverityFlagsEXT::all())
@@ -161,7 +229,7 @@ unsafe fn create_instance(window: &Window, entry: &Entry, data: &mut AppData) ->
         info = info.push_next(&mut debug_info);
     }
 
-    //= Creation ===----
+    //--== Creation ===----
 
     let instance = entry.create_instance(&info, None)?;
 
