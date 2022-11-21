@@ -111,8 +111,10 @@ impl App {
         if VALIDATION_ENABLED {
             self.instance.destroy_debug_utils_messenger_ext(self.data.messenger, None);
         }
-        self.instance.destroy_instance(None);
         self.device.destroy_device(None);
+
+        // Instance always should be destroyed after other stuff
+        self.instance.destroy_instance(None);
     }
 }
 
@@ -130,13 +132,15 @@ unsafe fn create_logical_device(instance: &Instance, data: &mut AppData) -> Resu
         vec![]
     };
 
+    let extensions = [vk::KHR_PORTABILITY_SUBSET_EXTENSION.name.as_ptr()];
+
     let features = vk::PhysicalDeviceFeatures::builder();
 
     let queue_infos = &[queue_info];
     let info = vk::DeviceCreateInfo::builder()
         .queue_create_infos(queue_infos)
         .enabled_layer_names(&layers)
-        .enabled_extension_names
+        .enabled_extension_names(&extensions)
         .enabled_features(&features);
 
     let device = instance.create_device(data.physical_device, &info, None)?;
@@ -228,6 +232,7 @@ unsafe fn create_instance(window: &Window, entry: &Entry, data: &mut AppData) ->
 
     if VALIDATION_ENABLED {
         extensions.push(vk::EXT_DEBUG_UTILS_EXTENSION.name.as_ptr());
+        extensions.push(vk::KHR_GET_PHYSICAL_DEVICE_PROPERTIES2_EXTENSION.name.as_ptr());
     }
 
     //--== Validation Layers ===----
