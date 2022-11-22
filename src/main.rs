@@ -303,7 +303,7 @@ unsafe fn create_logical_device(instance: &Instance, data: &mut AppData) -> Resu
     let mut extensions = vec![];
 
     if PORTABILITY_ENABLED {
-        extensions.push(KHR_PORTABILITY_ENUMERATION_EXTENSION.name.as_ptr());
+        extensions.push(vk::KHR_PORTABILITY_SUBSET_EXTENSION.name.as_ptr());
     }
 
     let features = vk::PhysicalDeviceFeatures::builder();
