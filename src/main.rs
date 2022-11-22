@@ -29,6 +29,8 @@ use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
 
+const PORTABILITY_ENABLED: bool = cfg!(target_os = "macos");
+
 const VALIDATION_ENABLED: bool = cfg!(debug_assertions);
 
 const VALIDATION_LAYER: vk::ExtensionName =
@@ -151,8 +153,9 @@ unsafe fn create_instance(window: &Window, entry: &Entry, data: &mut AppData) ->
         .map(|e| e.as_ptr())
         .collect();
 
-    #[cfg(target_os = "macos")]
-    extensions.push(KHR_PORTABILITY_ENUMERATION_EXTENSION.name.as_ptr());
+    if PORTABILITY_ENABLED {
+        extensions.push(KHR_PORTABILITY_ENUMERATION_EXTENSION.name.as_ptr());
+    }
 
     #[rustfmt::skip]
     if VALIDATION_ENABLED {
@@ -185,8 +188,9 @@ unsafe fn create_instance(window: &Window, entry: &Entry, data: &mut AppData) ->
         .enabled_extension_names(&extensions)
         .enabled_layer_names(&layers);
 
-    #[cfg(target_os = "macos")]
-    info = info.flags(InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR);
+    if PORTABILITY_ENABLED {
+        info = info.flags(InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR);
+    }
 
     let mut debug_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
         .message_severity(vk::DebugUtilsMessageSeverityFlagsEXT::all())
@@ -240,7 +244,7 @@ struct SuitabilityError(&'static str);
 
 unsafe fn pick_physical_device(instance: &Instance, data: &mut AppData) -> Result<()> {
     // Try to find a suitable device and pick it.
-    // Able to pick only one physical device.
+    // In the current version able to pick only one device even if multiple devices are available.
 
     for physical_device in instance.enumerate_physical_devices()? {
         let properties = instance.get_physical_device_properties(physical_device);
@@ -296,8 +300,11 @@ unsafe fn create_logical_device(instance: &Instance, data: &mut AppData) -> Resu
         vec![]
     };
 
-    #[cfg(target_os = "macos")]
-    let extensions = [vk::KHR_PORTABILITY_SUBSET_EXTENSION.name.as_ptr()];
+    let mut extensions = vec![];
+
+    if PORTABILITY_ENABLED {
+        extensions.push(KHR_PORTABILITY_ENUMERATION_EXTENSION.name.as_ptr());
+    }
 
     let features = vk::PhysicalDeviceFeatures::builder();
 
