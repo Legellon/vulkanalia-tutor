@@ -259,8 +259,8 @@ extern "system" fn debug_callback(
 struct SuitabilityError(&'static str);
 
 unsafe fn pick_physical_device(instance: &Instance, data: &mut AppData) -> Result<()> {
-    // Try to find a suitable device and pick it.
-    // In the current version able to pick only one device even if multiple devices are available.
+    // Try to find a suitable device and pick it
+    // In the current version able to pick only one device even if multiple devices are available
 
     for physical_device in instance.enumerate_physical_devices()? {
         let properties = instance.get_physical_device_properties(physical_device);
@@ -447,7 +447,7 @@ fn get_swapchain_present_mode(present_modes: &[vk::PresentModeKHR]) -> vk::Prese
 }
 
 fn get_swapchain_extent(window: &Window, capabilities: vk::SurfaceCapabilitiesKHR) -> vk::Extent2D {
-    if capabilities.current_extent.width != u32::max_value() {
+    if capabilities.current_extent.width != u32::MAX {
         capabilities.current_extent
     } else {
         let size = window.inner_size();
